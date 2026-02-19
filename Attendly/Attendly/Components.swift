@@ -296,7 +296,7 @@ struct BottomActionBar<Content: View>: View {
             .padding(.horizontal, 24)
             .padding(.top, 16)
             .padding(.bottom, 24)
-            .background(.ultraThinMaterial)
+            .background(AttendlyDesignSystem.Colors.card)
         }
         .ignoresSafeArea(edges: .bottom)
     }
@@ -329,7 +329,10 @@ struct RoleSelectionCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24)
-                .strokeBorder(isSelected ? AttendlyDesignSystem.gradientButtonBackground() : Color.black.opacity(0.08), lineWidth: 1.5)
+                .strokeBorder(
+                    isSelected ? AnyShapeStyle(AttendlyDesignSystem.gradientButtonBackground()) : AnyShapeStyle(Color.black.opacity(0.08)),
+                    lineWidth: 1.5
+                )
         )
         .shadowStyle(AttendlyDesignSystem.Shadows.card)
     }
