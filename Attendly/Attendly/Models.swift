@@ -1,6 +1,17 @@
 import Foundation
 import CoreLocation
 
+extension CLLocationCoordinate2D: Hashable {
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(latitude)
+        hasher.combine(longitude)
+    }
+
+    public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
+        lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+    }
+}
+
 enum UserRole: String, CaseIterable, Identifiable {
     case professor
     case student
@@ -24,6 +35,7 @@ struct AttendlyClass: Identifiable, Hashable {
     var meetingDays: [String]
     var geofenceRadius: CLLocationDistance
     var riskLevel: Double
+    var coordinate: CLLocationCoordinate2D
 
     init(
         id: UUID = UUID(),
@@ -33,7 +45,8 @@ struct AttendlyClass: Identifiable, Hashable {
         room: String,
         meetingDays: [String],
         geofenceRadius: CLLocationDistance = 30,
-        riskLevel: Double = 0
+        riskLevel: Double = 0,
+        coordinate: CLLocationCoordinate2D = .init(latitude: 37.4275, longitude: -122.1697)
     ) {
         self.id = id
         self.name = name
@@ -43,6 +56,7 @@ struct AttendlyClass: Identifiable, Hashable {
         self.meetingDays = meetingDays
         self.geofenceRadius = geofenceRadius
         self.riskLevel = riskLevel
+        self.coordinate = coordinate
     }
 }
 
@@ -54,6 +68,7 @@ struct Session: Identifiable, Hashable {
     var qrSeed: String
     var lateThresholdMinutes: Int
     var isLocked: Bool
+    var qrWindow: TimeInterval
 
     init(
         id: UUID = UUID(),
@@ -62,7 +77,8 @@ struct Session: Identifiable, Hashable {
         endTime: Date? = nil,
         qrSeed: String,
         lateThresholdMinutes: Int = 5,
-        isLocked: Bool = false
+        isLocked: Bool = false,
+        qrWindow: TimeInterval = 90
     ) {
         self.id = id
         self.classId = classId
@@ -71,6 +87,7 @@ struct Session: Identifiable, Hashable {
         self.qrSeed = qrSeed
         self.lateThresholdMinutes = lateThresholdMinutes
         self.isLocked = isLocked
+        self.qrWindow = qrWindow
     }
 }
 
@@ -121,14 +138,30 @@ struct StudentProfile: Identifiable {
     let id: UUID
     var name: String
     var deviceHash: String?
-    var classes: [AttendlyClass]
     var summary: AttendanceSummary
 }
 
 struct ProfessorProfile: Identifiable {
     let id: UUID
     var name: String
-    var classes: [AttendlyClass]
+}
+
+struct ClassFormInput {
+    var name: String = ""
+    var section: String = ""
+    var semester: String = ""
+    var room: String = ""
+    var meetingDays: [String] = []
+    var geofenceRadius: CLLocationDistance = 30
+    var coordinate: CLLocationCoordinate2D = .init(latitude: 37.4275, longitude: -122.1697)
+}
+
+enum AttendanceResult {
+    case success
+    case expired
+    case locked
+    case outsideGeofence
+    case invalid
 }
 
 struct SampleData {
@@ -144,14 +177,12 @@ struct SampleData {
 
     static let professor = ProfessorProfile(
         id: UUID(),
-        name: "Dr. Celeste Wong",
-        classes: [exampleClass]
+        name: "Dr. Celeste Wong"
     )
 
     static let student = StudentProfile(
         id: UUID(),
         name: "Aiden Cross",
-        classes: [exampleClass],
         summary: .init(onTimeCount: 42, lateCount: 3, absentCount: 2)
     )
 }

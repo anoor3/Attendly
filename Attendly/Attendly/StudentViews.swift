@@ -18,14 +18,16 @@ struct StudentHomeView: View {
             .background(AttendlyDesignSystem.Colors.background)
             .navigationTitle("Student")
             .sheet(isPresented: $viewModel.isScanning) {
-                QRScannerSheet(confirmAction: viewModel.confirmAttendance)
+                QRScannerSheet(onScanned: { code in
+                    viewModel.handleScannedCode(code)
+                })
             }
             .sheet(isPresented: Binding(
                 get: { viewModel.confirmationMessage != nil },
                 set: { _ in viewModel.confirmationMessage = nil }
             )) {
                 if let message = viewModel.confirmationMessage {
-                    AttendanceConfirmationView(message: message)
+                    AttendanceConfirmationView(message: message, result: viewModel.lastResult ?? .invalid)
                         .presentationDetents([.fraction(0.4)])
                 }
             }
@@ -56,10 +58,11 @@ struct StudentHomeView: View {
     }
 
     private var privacyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let radius = Int(viewModel.classes.first?.geofenceRadius ?? 30)
+        return VStack(alignment: .leading, spacing: 12) {
             Label("Location requested once per scan", systemImage: "shield.lefthalf.fill")
                 .font(.headline)
-            Text("We never store raw GPS—only a verification stamp proving you're within the \(Int(viewModel.profile.classes.first?.geofenceRadius ?? 30))m classroom radius.")
+            Text("We never store raw GPS—only a verification stamp proving you're within the \(radius)m classroom radius.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -80,54 +83,63 @@ struct StudentHomeView: View {
                 }
                 .buttonStyle(.bordered)
             }
-            ForEach(0..<6) { index in
-                TimelineRow(
-                    title: "Session \(index + 1)",
-                    subtitle: "Room 201 • \(Date.now.addingTimeInterval(Double(-index) * 86400).formatted(date: .abbreviated, time: .shortened))",
-                    status: index == 2 ? .late : .present
-                )
+            let records = Array(viewModel.attendanceHistory.prefix(6))
+            if records.isEmpty {
+                Text("No check-ins yet")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(records, id: \.id) { record in
+                    let sessionDate = record.timestamp.formatted(date: .abbreviated, time: .shortened)
+                    TimelineRow(
+                        title: viewModel.className(for: record),
+                        subtitle: sessionDate,
+                        status: viewModel.status(for: record)
+                    )
+                }
             }
         }
     }
 }
 
 struct QRScannerSheet: View {
-    var confirmAction: (Bool) -> Void
+    var onScanned: (String) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var scanning = true
+    @State private var didScan = false
+    @State private var manualCode = ""
 
     var body: some View {
         VStack(spacing: 24) {
             Text("Align QR to check in")
                 .font(.title2.bold())
-            ZStack {
-                RoundedRectangle(cornerRadius: 32)
-                    .stroke(AttendlyDesignSystem.gradientButtonBackground(), lineWidth: 4)
-                    .frame(height: 220)
-                    .overlay(
-                        Image(systemName: "qrcode.viewfinder")
-                            .font(.system(size: 80))
-                            .foregroundStyle(.primary.opacity(0.2))
-                    )
-                if !scanning {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 80))
-                        .foregroundStyle(AttendlyDesignSystem.Colors.success)
-                        .transition(.scale.combined(with: .opacity))
-                }
+            QRCodeScannerView { code in
+                guard !didScan else { return }
+                didScan = true
+                onScanned(code)
+                dismiss()
             }
+            .frame(height: 280)
+            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+            .shadowStyle(AttendlyDesignSystem.Shadows.card)
             Text("Location verification occurs once, on-device. Make sure you're within the classroom geofence.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            GradientButton(title: "Simulate Success", icon: "checkmark.seal") {
-                withAnimation(.spring()) {
-                    scanning = false
-                    confirmAction(true)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        dismiss()
-                    }
+            VStack(spacing: 12) {
+                TextField("Paste QR payload", text: $manualCode)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                GradientButton(title: "Use typed code", icon: "doc.on.doc") {
+                    guard !manualCode.isEmpty else { return }
+                    onScanned(manualCode)
+                    dismiss()
                 }
             }
+            #if targetEnvironment(simulator)
+            GradientButton(title: "Simulate Success", icon: "checkmark.seal") {
+                onScanned("simulated|0|token")
+                dismiss()
+            }
+            #endif
         }
         .padding(AttendlyDesignSystem.Spacing.large)
         .presentationDetents([.fraction(0.7)])
@@ -136,16 +148,36 @@ struct QRScannerSheet: View {
 
 struct AttendanceConfirmationView: View {
     var message: String
+    var result: AttendanceResult
+
+    private var accent: Color {
+        switch result {
+        case .success: return AttendlyDesignSystem.Colors.success
+        case .outsideGeofence, .invalid: return AttendlyDesignSystem.Colors.danger
+        case .locked, .expired: return AttendlyDesignSystem.Colors.warning
+        }
+    }
+
+    private var icon: String {
+        switch result {
+        case .success: return "checkmark.circle.fill"
+        case .locked: return "lock.circle.fill"
+        case .expired: return "clock.badge.exclamationmark"
+        case .outsideGeofence: return "location.slash"
+        case .invalid: return "xmark.octagon.fill"
+        }
+    }
 
     var body: some View {
         VStack(spacing: 24) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: icon)
                 .font(.system(size: 96))
                 .symbolEffect(.bounce, value: message)
-                .foregroundStyle(AttendlyDesignSystem.Colors.success)
+                .foregroundStyle(accent)
             Text(message)
                 .font(.title2.bold())
-            Text("You're marked present. Stay within range until the professor locks attendance.")
+                .multilineTextAlignment(.center)
+            Text(result == .success ? "You're marked present. Stay within range until the professor locks attendance." : "Please try again or contact your professor if this persists.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
@@ -191,6 +223,7 @@ struct AttendanceHistoryView: View {
 
 struct StudentHomeView_Previews: PreviewProvider {
     static var previews: some View {
-        StudentHomeView(viewModel: .init(profile: SampleData.student))
+        let appState = AppState()
+        StudentHomeView(viewModel: StudentHomeViewModel(appState: appState))
     }
 }

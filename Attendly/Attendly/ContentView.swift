@@ -9,11 +9,13 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var router = RoleRouterViewModel()
+    @EnvironmentObject private var appState: AppState
 
     var body: some View {
         Group {
             if let role = router.role {
                 RoleExperienceView(role: role)
+                    .environmentObject(appState)
                     .transition(.opacity)
             } else {
                 RoleSelectionView(role: $router.role)
@@ -74,20 +76,27 @@ private struct RoleSelectionView: View {
 }
 
 private struct RoleExperienceView: View {
+    @EnvironmentObject var appState: AppState
     var role: UserRole
 
     var body: some View {
         switch role {
         case .professor:
-            ProfessorExperienceView()
+            ProfessorExperienceView(appState: appState)
         case .student:
-            StudentExperienceView()
+            StudentExperienceView(appState: appState)
         }
     }
 }
 
 private struct ProfessorExperienceView: View {
-    @StateObject private var viewModel = ProfessorDashboardViewModel(profile: SampleData.professor)
+    @ObservedObject private var appState: AppState
+    @StateObject private var viewModel: ProfessorDashboardViewModel
+
+    init(appState: AppState) {
+        self._appState = ObservedObject(wrappedValue: appState)
+        _viewModel = StateObject(wrappedValue: ProfessorDashboardViewModel(appState: appState))
+    }
 
     var body: some View {
         TabView {
@@ -104,11 +113,18 @@ private struct ProfessorExperienceView: View {
                     Label("Settings", systemImage: "gearshape")
                 }
         }
+        .environmentObject(appState)
     }
 }
 
 private struct StudentExperienceView: View {
-    @StateObject private var viewModel = StudentHomeViewModel(profile: SampleData.student)
+    @ObservedObject private var appState: AppState
+    @StateObject private var viewModel: StudentHomeViewModel
+
+    init(appState: AppState) {
+        self._appState = ObservedObject(wrappedValue: appState)
+        _viewModel = StateObject(wrappedValue: StudentHomeViewModel(appState: appState))
+    }
 
     var body: some View {
         TabView {
@@ -125,6 +141,7 @@ private struct StudentExperienceView: View {
                     Label("Profile", systemImage: "person.circle")
                 }
         }
+        .environmentObject(appState)
     }
 }
 

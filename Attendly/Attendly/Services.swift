@@ -1,28 +1,38 @@
 import Foundation
 import CoreLocation
 
-protocol LocationValidating {
-    func requestLocationPermission() async throws
-    func validate(location: CLLocation, within radius: CLLocationDistance, of classroom: CLLocation) -> Bool
+protocol LocationServicing {
+    func requestAuthorization() async throws
+    func requestCurrentLocation() async throws -> CLLocation
 }
 
-final class LocationValidator: NSObject, LocationValidating, CLLocationManagerDelegate {
+final class LocationValidator: NSObject, LocationServicing, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private var permissionContinuation: CheckedContinuation<Void, Error>?
+    private var locationContinuation: CheckedContinuation<CLLocation, Error>?
 
     override init() {
         super.init()
         manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
     enum LocationError: Error {
         case denied
+        case unavailable
     }
 
-    func requestLocationPermission() async throws {
+    func requestAuthorization() async throws {
         manager.requestWhenInUseAuthorization()
         try await withCheckedThrowingContinuation { continuation in
             permissionContinuation = continuation
+        }
+    }
+
+    func requestCurrentLocation() async throws -> CLLocation {
+        manager.requestLocation()
+        return try await withCheckedThrowingContinuation { continuation in
+            locationContinuation = continuation
         }
     }
 
@@ -39,8 +49,15 @@ final class LocationValidator: NSObject, LocationValidating, CLLocationManagerDe
         permissionContinuation = nil
     }
 
-    func validate(location: CLLocation, within radius: CLLocationDistance, of classroom: CLLocation) -> Bool {
-        classroom.distance(from: location) <= radius
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        locationContinuation?.resume(returning: location)
+        locationContinuation = nil
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        locationContinuation?.resume(throwing: error)
+        locationContinuation = nil
     }
 }
 
