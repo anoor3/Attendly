@@ -67,7 +67,8 @@ final class AppState: ObservableObject {
     }
 
     func qrToken(for session: Session) -> String {
-        qrProvider.generateToken(for: session, window: session.qrWindow)
+        guard let attendlyClass = classes.first(where: { $0.id == session.classId }) else { return "" }
+        return qrProvider.generateToken(for: session, attendlyClass: attendlyClass)
     }
 
     func attendanceCount(for session: Session) -> Int {
@@ -85,26 +86,28 @@ final class AppState: ObservableObject {
     // MARK: - Attendance scanning
 
     func verifyScan(token: String, location: CLLocation?) -> AttendanceResult {
-        let components = token.split(separator: "|")
-        guard components.count >= 3 else { return .invalid }
-        guard let sessionId = UUID(uuidString: String(components[0])) else { return .invalid }
-        guard let bucket = Int(components[1]) else { return .invalid }
+        guard let data = Data(base64Encoded: token) else { return .invalid }
+        guard let payload = try? JSONDecoder().decode(QRPayload.self, from: data) else { return .invalid }
 
-        guard let session = sessions.values.first(where: { $0.id == sessionId }) else { return .invalid }
-        guard !session.isLocked else { return .locked }
-        guard session.endTime == nil else { return .expired }
-
-        let nowBucket = Int(Date().timeIntervalSince1970 / session.qrWindow)
-        guard abs(nowBucket - bucket) <= 1 else { return .expired }
-
-        guard let attendlyClass = classes.first(where: { $0.id == session.classId }) else { return .invalid }
+        let nowBucket = Int(Date().timeIntervalSince1970 / payload.qrWindow)
+        guard abs(nowBucket - payload.bucket) <= 1 else { return .expired }
 
         guard let location else { return .outsideGeofence }
-        let classLocation = CLLocation(latitude: attendlyClass.coordinate.latitude, longitude: attendlyClass.coordinate.longitude)
-        guard classLocation.distance(from: location) <= attendlyClass.geofenceRadius else { return .outsideGeofence }
+        let classLocation = CLLocation(latitude: payload.latitude, longitude: payload.longitude)
+        guard classLocation.distance(from: location) <= payload.geofenceRadius else { return .outsideGeofence }
 
-        let elapsed = Date().timeIntervalSince(session.startTime)
-        let status: AttendanceStatus = elapsed > Double(session.lateThresholdMinutes * 60) ? .late : .onTime
+        let attendlyClass = upsertClass(from: payload)
+        let session = upsertSession(from: payload, classId: attendlyClass.id)
+
+        if session.isLocked { return .locked }
+        if session.endTime != nil { return .expired }
+
+        if attendanceRecords.contains(where: { $0.sessionId == session.id && $0.studentId == studentProfile.id }) {
+            return .success
+        }
+
+        let elapsed = Date().timeIntervalSince(Date(timeIntervalSince1970: payload.sessionStartTime))
+        let status: AttendanceStatus = elapsed > Double(payload.lateThresholdMinutes * 60) ? .late : .onTime
         let record = AttendanceRecord(
             sessionId: session.id,
             studentId: studentProfile.id,
@@ -121,5 +124,41 @@ final class AppState: ObservableObject {
             studentProfile.summary.absentCount += 1
         }
         return .success
+    }
+
+    private func upsertClass(from payload: QRPayload) -> AttendlyClass {
+        let newClass = AttendlyClass(
+            id: payload.classId,
+            name: payload.className,
+            section: payload.section,
+            semester: payload.semester,
+            room: payload.room,
+            meetingDays: payload.meetingDays,
+            geofenceRadius: payload.geofenceRadius,
+            coordinate: CLLocationCoordinate2D(latitude: payload.latitude, longitude: payload.longitude)
+        )
+        if let index = classes.firstIndex(where: { $0.id == newClass.id }) {
+            classes[index] = newClass
+        } else {
+            classes.append(newClass)
+        }
+        return newClass
+    }
+
+    private func upsertSession(from payload: QRPayload, classId: UUID) -> Session {
+        if let existing = sessions[payload.sessionId] {
+            return existing
+        }
+        let session = Session(
+            id: payload.sessionId,
+            classId: classId,
+            startTime: Date(timeIntervalSince1970: payload.sessionStartTime),
+            qrSeed: payload.qrSeed,
+            lateThresholdMinutes: payload.lateThresholdMinutes,
+            isLocked: false,
+            qrWindow: payload.qrWindow
+        )
+        sessions[session.id] = session
+        return session
     }
 }
