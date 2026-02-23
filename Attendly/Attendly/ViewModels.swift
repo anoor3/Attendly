@@ -70,8 +70,7 @@ final class ProfessorDashboardViewModel: ObservableObject {
 @MainActor
 final class StudentHomeViewModel: ObservableObject {
     @Published var isScanning = false
-    @Published var confirmationMessage: String?
-    @Published var lastResult: AttendanceResult?
+    @Published var confirmation: AttendanceConfirmation?
 
     private let appState: AppState
     private let locationService: LocationServicing
@@ -117,20 +116,17 @@ final class StudentHomeViewModel: ObservableObject {
                 #if targetEnvironment(simulator)
                 let location = simulateLocation()
                 let result = appState.verifyScan(token: code, location: location)
-                lastResult = result
-                confirmationMessage = message(for: result)
+                confirmation = AttendanceConfirmation(message: message(for: result), result: result)
                 isScanning = false
                 #else
                 try await locationService.requestAuthorization()
                 let location = try await locationService.requestCurrentLocation()
                 let result = appState.verifyScan(token: code, location: location)
-                lastResult = result
-                confirmationMessage = message(for: result)
+                confirmation = AttendanceConfirmation(message: message(for: result), result: result)
                 isScanning = false
                 #endif
             } catch {
-                lastResult = .outsideGeofence
-                confirmationMessage = "Location required to verify check-in"
+                confirmation = AttendanceConfirmation(message: "Location required to verify check-in", result: .outsideGeofence)
                 isScanning = false
             }
         }

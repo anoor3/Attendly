@@ -22,14 +22,9 @@ struct StudentHomeView: View {
                     viewModel.handleScannedCode(code)
                 })
             }
-            .sheet(isPresented: Binding(
-                get: { viewModel.confirmationMessage != nil },
-                set: { _ in viewModel.confirmationMessage = nil }
-            )) {
-                if let message = viewModel.confirmationMessage {
-                    AttendanceConfirmationView(message: message, result: viewModel.lastResult ?? .invalid)
-                        .presentationDetents([.fraction(0.4)])
-                }
+            .sheet(item: $viewModel.confirmation) { confirmation in
+                AttendanceConfirmationView(message: confirmation.message, result: confirmation.result)
+                    .presentationDetents([.fraction(0.4)])
             }
             .sheet(isPresented: $showHistory) {
                 AttendanceHistoryView(summary: viewModel.profile.summary)

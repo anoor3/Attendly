@@ -134,6 +134,12 @@ struct AttendanceSummary {
     }
 }
 
+struct AttendanceConfirmation: Identifiable {
+    let id = UUID()
+    let message: String
+    let result: AttendanceResult
+}
+
 struct StudentProfile: Identifiable {
     let id: UUID
     var name: String
