@@ -71,6 +71,7 @@ final class ProfessorDashboardViewModel: ObservableObject {
 final class StudentHomeViewModel: ObservableObject {
     @Published var isScanning = false
     @Published var confirmation: AttendanceConfirmation?
+    @Published var pendingEnrollment: EnrollmentPrompt?
 
     private let appState: AppState
     private let locationService: LocationServicing
@@ -111,25 +112,29 @@ final class StudentHomeViewModel: ObservableObject {
     }
 
     func handleScannedCode(_ code: String) {
-        Task { @MainActor in
-            do {
-                #if targetEnvironment(simulator)
-                let location = simulateLocation()
-                let result = appState.verifyScan(token: code, location: location)
-                confirmation = AttendanceConfirmation(message: message(for: result), result: result)
-                isScanning = false
-                #else
-                try await locationService.requestAuthorization()
-                let location = try await locationService.requestCurrentLocation()
-                let result = appState.verifyScan(token: code, location: location)
-                confirmation = AttendanceConfirmation(message: message(for: result), result: result)
-                isScanning = false
-                #endif
-            } catch {
-                confirmation = AttendanceConfirmation(message: "Location required to verify check-in", result: .outsideGeofence)
-                isScanning = false
-            }
+        guard let payload = appState.decodeToken(code) else {
+            confirmation = AttendanceConfirmation(message: message(for: .invalid), result: .invalid)
+            isScanning = false
+            return
         }
+
+        if appState.isStudentEnrolled(in: payload.classId) {
+            isScanning = false
+            Task { await verify(token: code) }
+        } else {
+            pendingEnrollment = EnrollmentPrompt(token: code, payload: payload)
+            isScanning = false
+        }
+    }
+
+    func confirmEnrollment(for prompt: EnrollmentPrompt) {
+        pendingEnrollment = nil
+        appState.enrollStudent(in: prompt.payload.classId)
+        Task { await verify(token: prompt.token) }
+    }
+
+    func cancelEnrollmentPrompt() {
+        pendingEnrollment = nil
     }
 
     private func simulateLocation() -> CLLocation {
@@ -137,6 +142,30 @@ final class StudentHomeViewModel: ObservableObject {
             return CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         }
         return CLLocation(latitude: 0, longitude: 0)
+    }
+
+    @MainActor
+    private func verify(token: String) async {
+        do {
+            #if targetEnvironment(simulator)
+            let location = simulateLocation()
+            let result = appState.verifyScan(token: token, location: location)
+            confirmation = AttendanceConfirmation(message: message(for: result), result: result)
+            #else
+            try await locationService.requestAuthorization()
+            let location = try await locationService.requestCurrentLocation()
+            let result = appState.verifyScan(token: token, location: location)
+            confirmation = AttendanceConfirmation(message: message(for: result), result: result)
+            #endif
+        } catch {
+            confirmation = AttendanceConfirmation(message: "Location required to verify check-in", result: .outsideGeofence)
+        }
+    }
+
+    struct EnrollmentPrompt: Identifiable {
+        let id = UUID()
+        let token: String
+        let payload: QRPayload
     }
 
     private func message(for result: AttendanceResult) -> String {

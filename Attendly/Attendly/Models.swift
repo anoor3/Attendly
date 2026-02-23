@@ -1,7 +1,7 @@
 import Foundation
 import CoreLocation
 
-extension CLLocationCoordinate2D: Hashable {
+extension CLLocationCoordinate2D: Hashable, Codable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(latitude)
         hasher.combine(longitude)
@@ -9,6 +9,24 @@ extension CLLocationCoordinate2D: Hashable {
 
     public static func == (lhs: CLLocationCoordinate2D, rhs: CLLocationCoordinate2D) -> Bool {
         lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(latitude, forKey: .latitude)
+        try container.encode(longitude, forKey: .longitude)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let latitude = try container.decode(CLLocationDegrees.self, forKey: .latitude)
+        let longitude = try container.decode(CLLocationDegrees.self, forKey: .longitude)
+        self.init(latitude: latitude, longitude: longitude)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case latitude
+        case longitude
     }
 }
 
@@ -26,7 +44,7 @@ enum UserRole: String, CaseIterable, Identifiable {
     }
 }
 
-struct AttendlyClass: Identifiable, Hashable {
+struct AttendlyClass: Identifiable, Hashable, Codable {
     let id: UUID
     var name: String
     var section: String
@@ -60,7 +78,7 @@ struct AttendlyClass: Identifiable, Hashable {
     }
 }
 
-struct Session: Identifiable, Hashable {
+struct Session: Identifiable, Hashable, Codable {
     let id: UUID
     var classId: UUID
     var startTime: Date
@@ -91,13 +109,13 @@ struct Session: Identifiable, Hashable {
     }
 }
 
-enum AttendanceStatus: String {
+enum AttendanceStatus: String, Codable {
     case onTime
     case late
     case absent
 }
 
-struct AttendanceRecord: Identifiable, Hashable {
+struct AttendanceRecord: Identifiable, Hashable, Codable {
     let id: UUID
     var sessionId: UUID
     var studentId: UUID
@@ -122,7 +140,7 @@ struct AttendanceRecord: Identifiable, Hashable {
     }
 }
 
-struct AttendanceSummary {
+struct AttendanceSummary: Codable {
     var onTimeCount: Int
     var lateCount: Int
     var absentCount: Int
@@ -140,14 +158,15 @@ struct AttendanceConfirmation: Identifiable {
     let result: AttendanceResult
 }
 
-struct StudentProfile: Identifiable {
+struct StudentProfile: Identifiable, Codable {
     let id: UUID
     var name: String
     var deviceHash: String?
     var summary: AttendanceSummary
+    var enrolledClassIds: Set<UUID> = []
 }
 
-struct ProfessorProfile: Identifiable {
+struct ProfessorProfile: Identifiable, Codable {
     let id: UUID
     var name: String
 }
@@ -164,6 +183,7 @@ struct ClassFormInput {
 
 enum AttendanceResult {
     case success
+    case alreadyCheckedIn
     case expired
     case locked
     case outsideGeofence
@@ -189,6 +209,7 @@ struct SampleData {
     static let student = StudentProfile(
         id: UUID(),
         name: "Aiden Cross",
-        summary: .init(onTimeCount: 42, lateCount: 3, absentCount: 2)
+        summary: .init(onTimeCount: 42, lateCount: 3, absentCount: 2),
+        enrolledClassIds: [exampleClass.id]
     )
 }

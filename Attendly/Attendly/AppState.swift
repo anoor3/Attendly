@@ -86,8 +86,7 @@ final class AppState: ObservableObject {
     // MARK: - Attendance scanning
 
     func verifyScan(token: String, location: CLLocation?) -> AttendanceResult {
-        guard let data = Data(base64Encoded: token) else { return .invalid }
-        guard let payload = try? JSONDecoder().decode(QRPayload.self, from: data) else { return .invalid }
+        guard let payload = decodeToken(token) else { return .invalid }
 
         let nowBucket = Int(Date().timeIntervalSince1970 / payload.qrWindow)
         guard abs(nowBucket - payload.bucket) <= 1 else { return .expired }
@@ -98,6 +97,7 @@ final class AppState: ObservableObject {
 
         let attendlyClass = upsertClass(from: payload)
         let session = upsertSession(from: payload, classId: attendlyClass.id)
+        enrollStudent(in: attendlyClass.id)
 
         if session.isLocked { return .locked }
         if session.endTime != nil { return .expired }
@@ -160,5 +160,18 @@ final class AppState: ObservableObject {
         )
         sessions[session.id] = session
         return session
+    }
+
+    func decodeToken(_ token: String) -> QRPayload? {
+        guard let data = Data(base64Encoded: token) else { return nil }
+        return try? JSONDecoder().decode(QRPayload.self, from: data)
+    }
+
+    func isStudentEnrolled(in classId: UUID) -> Bool {
+        studentProfile.enrolledClassIds.contains(classId)
+    }
+
+    func enrollStudent(in classId: UUID) {
+        studentProfile.enrolledClassIds.insert(classId)
     }
 }

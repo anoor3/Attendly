@@ -22,6 +22,13 @@ struct StudentHomeView: View {
                     viewModel.handleScannedCode(code)
                 })
             }
+            .sheet(item: $viewModel.pendingEnrollment) { prompt in
+                EnrollmentSheet(prompt: prompt) {
+                    viewModel.confirmEnrollment(for: prompt)
+                } onCancel: {
+                    viewModel.cancelEnrollmentPrompt()
+                }
+            }
             .sheet(item: $viewModel.confirmation) { confirmation in
                 AttendanceConfirmationView(message: confirmation.message, result: confirmation.result)
                     .presentationDetents([.fraction(0.4)])
@@ -177,6 +184,40 @@ struct AttendanceConfirmationView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(AttendlyDesignSystem.Spacing.large)
+    }
+}
+
+struct EnrollmentSheet: View {
+    let prompt: StudentHomeViewModel.EnrollmentPrompt
+    var onConfirm: () -> Void
+    var onCancel: () -> Void
+
+    var body: some View {
+        VStack(spacing: AttendlyDesignSystem.Spacing.large) {
+            VStack(spacing: 8) {
+                Text("Join \(prompt.payload.className)?")
+                    .font(.title2.bold())
+                Text("Section \(prompt.payload.section) • \(prompt.payload.semester)")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Room \(prompt.payload.room)", systemImage: "door.left.hand.closed")
+                Label("Meets \(prompt.payload.meetingDays.joined(separator: " · "))", systemImage: "calendar")
+                Label("Geofence \(Int(prompt.payload.geofenceRadius))m", systemImage: "mappin.and.ellipse")
+            }
+            .font(.subheadline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            GradientButton(title: "Join class & Check In", icon: "checkmark.circle.fill") {
+                onConfirm()
+            }
+            Button("Cancel", role: .cancel) {
+                onCancel()
+            }
+        }
+        .padding(AttendlyDesignSystem.Spacing.large)
+        .presentationDetents([.fraction(0.45)])
     }
 }
 
