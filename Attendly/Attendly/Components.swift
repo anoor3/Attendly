@@ -235,21 +235,25 @@ struct DynamicQRView: View {
         Image(uiImage: generateImage(from: token))
             .interpolation(.none)
             .resizable()
-            .scaledToFit()
+            .aspectRatio(1, contentMode: .fit)
+            .frame(maxWidth: .infinity)
             .padding(32)
             .background(
                 RoundedRectangle(cornerRadius: 28, style: .continuous)
                     .fill(AttendlyDesignSystem.Colors.card)
             )
             .shadow(color: Color.black.opacity(0.12), radius: 25, y: 15)
+            .frame(maxWidth: .infinity)
             .transition(.scale(scale: 0.9).combined(with: .opacity))
     }
 
     private func generateImage(from string: String) -> UIImage {
         filter.message = Data(string.utf8)
-        if let outputImage = filter.outputImage,
-           let cgImage = context.createCGImage(outputImage.transformed(by: CGAffineTransform(scaleX: 10, y: 10)), from: outputImage.extent) {
-            return UIImage(cgImage: cgImage)
+        if let outputImage = filter.outputImage {
+            let transformed = outputImage.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
+            if let cgImage = context.createCGImage(transformed, from: transformed.extent) {
+                return UIImage(cgImage: cgImage)
+            }
         }
         return UIImage(systemName: "qrcode") ?? UIImage()
     }
