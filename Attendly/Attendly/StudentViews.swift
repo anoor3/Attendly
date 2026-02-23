@@ -154,7 +154,7 @@ struct AttendanceConfirmationView: View {
 
     private var accent: Color {
         switch result {
-        case .success: return AttendlyDesignSystem.Colors.success
+        case .success, .alreadyCheckedIn: return AttendlyDesignSystem.Colors.success
         case .outsideGeofence, .invalid: return AttendlyDesignSystem.Colors.danger
         case .locked, .expired: return AttendlyDesignSystem.Colors.warning
         }
@@ -163,10 +163,22 @@ struct AttendanceConfirmationView: View {
     private var icon: String {
         switch result {
         case .success: return "checkmark.circle.fill"
+        case .alreadyCheckedIn: return "checkmark.circle"
         case .locked: return "lock.circle.fill"
         case .expired: return "clock.badge.exclamationmark"
         case .outsideGeofence: return "location.slash"
         case .invalid: return "xmark.octagon.fill"
+        }
+    }
+
+    private var detailText: String {
+        switch result {
+        case .success:
+            return "You're marked present. Stay within range until the professor locks attendance."
+        case .alreadyCheckedIn:
+            return "You're already marked present. Check your history for confirmation."
+        default:
+            return "Please try again or contact your professor if this persists."
         }
     }
 
@@ -179,7 +191,7 @@ struct AttendanceConfirmationView: View {
             Text(message)
                 .font(.title2.bold())
                 .multilineTextAlignment(.center)
-            Text(result == .success ? "You're marked present. Stay within range until the professor locks attendance." : "Please try again or contact your professor if this persists.")
+            Text(detailText)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }

@@ -129,6 +129,7 @@ final class StudentHomeViewModel: ObservableObject {
 
     func confirmEnrollment(for prompt: EnrollmentPrompt) {
         pendingEnrollment = nil
+        appState.cacheClass(from: prompt.payload)
         appState.enrollStudent(in: prompt.payload.classId)
         Task { await verify(token: prompt.token) }
     }
@@ -172,6 +173,8 @@ final class StudentHomeViewModel: ObservableObject {
         switch result {
         case .success:
             return "Checked in successfully"
+        case .alreadyCheckedIn:
+            return "Already checked in for this session"
         case .expired:
             return "QR expired. Ask professor to refresh."
         case .locked:

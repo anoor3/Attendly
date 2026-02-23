@@ -10,19 +10,28 @@ final class AppState: ObservableObject {
     @Published var studentProfile: StudentProfile
 
     private let qrProvider: QRTokenProviding
+    private let defaults: UserDefaults
+
+    private enum StorageKey {
+        static let classes = "attendly.classes"
+        static let attendanceRecords = "attendly.attendanceRecords"
+        static let studentProfile = "attendly.studentProfile"
+    }
 
     init(
-        classes: [AttendlyClass] = [SampleData.exampleClass],
+        classes initialClasses: [AttendlyClass] = [SampleData.exampleClass],
         professorProfile: ProfessorProfile = SampleData.professor,
-        studentProfile: StudentProfile = SampleData.student,
-        qrProvider: QRTokenProviding = QRTokenProvider()
+        studentProfile initialStudentProfile: StudentProfile = SampleData.student,
+        qrProvider: QRTokenProviding = QRTokenProvider(),
+        userDefaults: UserDefaults = .standard
     ) {
-        self.classes = classes
-        self.sessions = [:]
-        self.attendanceRecords = []
-        self.professorProfile = professorProfile
-        self.studentProfile = studentProfile
+        self.defaults = userDefaults
         self.qrProvider = qrProvider
+        self.classes = AppState.loadValue(from: userDefaults, key: StorageKey.classes) ?? initialClasses
+        self.sessions = [:]
+        self.attendanceRecords = AppState.loadValue(from: userDefaults, key: StorageKey.attendanceRecords) ?? []
+        self.professorProfile = professorProfile
+        self.studentProfile = AppState.loadValue(from: userDefaults, key: StorageKey.studentProfile) ?? initialStudentProfile
     }
 
     // MARK: - Class management
@@ -38,6 +47,7 @@ final class AppState: ObservableObject {
             coordinate: form.coordinate
         )
         classes.append(newClass)
+        persistClasses()
     }
 
     // MARK: - Session lifecycle
@@ -103,7 +113,7 @@ final class AppState: ObservableObject {
         if session.endTime != nil { return .expired }
 
         if attendanceRecords.contains(where: { $0.sessionId == session.id && $0.studentId == studentProfile.id }) {
-            return .success
+            return .alreadyCheckedIn
         }
 
         let elapsed = Date().timeIntervalSince(Date(timeIntervalSince1970: payload.sessionStartTime))
@@ -123,9 +133,16 @@ final class AppState: ObservableObject {
         case .absent:
             studentProfile.summary.absentCount += 1
         }
+        persistAttendanceRecords()
+        persistStudentProfile()
         return .success
     }
 
+    func cacheClass(from payload: QRPayload) {
+        _ = upsertClass(from: payload)
+    }
+
+    @discardableResult
     private func upsertClass(from payload: QRPayload) -> AttendlyClass {
         let newClass = AttendlyClass(
             id: payload.classId,
@@ -142,6 +159,7 @@ final class AppState: ObservableObject {
         } else {
             classes.append(newClass)
         }
+        persistClasses()
         return newClass
     }
 
@@ -172,6 +190,32 @@ final class AppState: ObservableObject {
     }
 
     func enrollStudent(in classId: UUID) {
-        studentProfile.enrolledClassIds.insert(classId)
+        if studentProfile.enrolledClassIds.insert(classId).inserted {
+            persistStudentProfile()
+        }
+    }
+
+    private func persistClasses() {
+        saveValue(classes, forKey: StorageKey.classes)
+    }
+
+    private func persistAttendanceRecords() {
+        saveValue(attendanceRecords, forKey: StorageKey.attendanceRecords)
+    }
+
+    private func persistStudentProfile() {
+        saveValue(studentProfile, forKey: StorageKey.studentProfile)
+    }
+
+    private func saveValue<T: Encodable>(_ value: T, forKey key: String) {
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(value) {
+            defaults.set(data, forKey: key)
+        }
+    }
+
+    private static func loadValue<T: Decodable>(from defaults: UserDefaults, key: String) -> T? {
+        guard let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
     }
 }
